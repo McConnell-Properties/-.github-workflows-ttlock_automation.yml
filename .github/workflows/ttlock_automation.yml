@@ -4,6 +4,7 @@ on:
     # Run every 15 minutes
     - cron: '*/15 * * * *'
   workflow_dispatch:
+
 jobs:
   run-ttlock-automation:
     runs-on: ubuntu-latest
@@ -11,6 +12,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      
+      - name: Download bookings.csv from Google Sheets
+        run: |
+          curl -L "https://docs.google.com/spreadsheets/d/15dlVRicq93vepohGlRvWccRN9zJc6y5dMJQ_UWbdFC0/export?format=csv&gid=1119920792" -o bookings.csv
       
       - name: Set up Python
         uses: actions/setup-python@v4
