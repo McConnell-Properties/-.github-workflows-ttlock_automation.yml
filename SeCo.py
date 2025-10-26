@@ -123,17 +123,30 @@ def parse_date(date_str):
 def process_bookings_from_csv(csvfile):
     """Process bookings from CSV file with Google Calendar export format."""
     with open(csvfile, newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
+        # Read as a regular list to handle unnamed columns
+        reader = csv.reader(f)
+        header = next(reader)  # Get header row
+        
+        # Debug: print header to understand structure
+        print(f"CSV Header: {header}")
+        print(f"Number of columns: {len(header)}")
+        
         for i, row in enumerate(reader, start=2):  # start at 2 to account for header row
             # Skip empty rows
-            if not any(row.values()):
+            if not any(row):
                 continue
-                
-            # Extract fields from CSV (Google Calendar format)
-            room_number = row.get("Room Number", "").strip()
-            guest_name = row.get("Name", "").strip()
-            check_in_str = row.get("DTSTART (Check-in)", "").strip()
-            check_out_str = row.get("DTEND (Check-out)", "").strip()
+            
+            # Ensure row has enough columns
+            if len(row) < 12:
+                print(f"Row {i}: Skipping - insufficient columns ({len(row)} columns)")
+                continue
+            
+            # Extract fields from CSV by position
+            # Based on the CSV structure: Room,PRODID,VERSION,UID,DTSTAMP,DTSTART,DTEND,SUMMARY,DESCRIPTION,SEQUENCE,Location,Name,Phone,Email
+            room_number = row[0].strip() if len(row) > 0 else ""  # Column 0: Room
+            check_in_str = row[5].strip() if len(row) > 5 else ""  # Column 5: DTSTART (Check-in)
+            check_out_str = row[6].strip() if len(row) > 6 else ""  # Column 6: DTEND (Check-out)
+            guest_name = row[11].strip() if len(row) > 11 else ""  # Column 11: Name (unnamed in header)
             
             # Skip rows with missing essential data
             if not check_in_str or not check_out_str:
@@ -141,7 +154,7 @@ def process_bookings_from_csv(csvfile):
                 continue
             
             if not guest_name:
-                print(f"Row {i}: Skipping - missing guest name")
+                print(f"Row {i}: Skipping - missing guest name (column 11)")
                 continue
             
             # Parse dates
