@@ -2,6 +2,7 @@ import requests
 import csv
 import os
 import time
+import json
 from datetime import datetime, timedelta
 
 # TTLock OAuth / API config
@@ -68,7 +69,6 @@ def create_lock_code_simple(lock_id, code, name, start, end, code_type="Room", b
         "addType": 2,
         "date": int(time.time() * 1000),
     }
-
     print(f"Creating {code_type} code '{code}' for {name}")
     try:
         api_res = requests.post(f"{TTLOCK_API_BASE}/v3/keyboardPwd/add", data=payload, timeout=30)
@@ -83,7 +83,6 @@ def create_lock_code_simple(lock_id, code, name, start, end, code_type="Room", b
             payload["accessToken"] = newtok["access_token"]
             api_res = requests.post(f"{TTLOCK_API_BASE}/v3/keyboardPwd/add", data=payload, timeout=30)
             result = api_res.json()
-
         if result.get("errcode") == 0:
             print(f"Code {code} created successfully")
             return True
@@ -100,8 +99,7 @@ def create_lock_code_simple(lock_id, code, name, start, end, code_type="Room", b
     return False
 
 # ---- Main CSV logic ----
-
-# Example mapping (customize/expand for your properties/locks):
+# Example mapping (customize/expand for your properties/locks)
 LOCK_IDS = {
     "Tooting": 20641052,
     "Streatham": 16273050,
@@ -110,8 +108,12 @@ LOCK_IDS = {
 }
 
 def parse_date(date_str):
-    # Adjust as needed based on Google Sheets export format, e.g. '%d/%m/%Y'
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+    """Parse date from various formats including ISO 8601."""
+    if not date_str or date_str.strip() == "":
+        raise ValueError("Empty date string provided")
+    
+    # Try ISO 8601 format first (e.g., '20250109T130000Z' or '2025-01-09T13:00:00Z')
+    for fmt in ("%Y%m%dT%H%M%SZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
         try:
             return datetime.strptime(date_str, fmt)
         except ValueError:
@@ -119,24 +121,68 @@ def parse_date(date_str):
     raise ValueError(f"Unknown date format: {date_str}")
 
 def process_bookings_from_csv(csvfile):
+    """Process bookings from CSV file with Google Calendar export format."""
     with open(csvfile, newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            property_name = row.get("Property") or "Tooting"  # Update as appropriate
+        for i, row in enumerate(reader, start=2):  # start at 2 to account for header row
+            # Skip empty rows
+            if not any(row.values()):
+                continue
+                
+            # Extract fields from CSV (Google Calendar format)
+            room_number = row.get("Room Number", "").strip()
+            guest_name = row.get("Name", "").strip()
+            check_in_str = row.get("DTSTART (Check-in)", "").strip()
+            check_out_str = row.get("DTEND (Check-out)", "").strip()
+            
+            # Skip rows with missing essential data
+            if not check_in_str or not check_out_str:
+                print(f"Row {i}: Skipping - missing check-in or check-out date")
+                continue
+            
+            if not guest_name:
+                print(f"Row {i}: Skipping - missing guest name")
+                continue
+            
+            # Parse dates
+            try:
+                check_in = parse_date(check_in_str)
+                check_out = parse_date(check_out_str)
+            except ValueError as e:
+                print(f"Row {i}: Skipping - {e}")
+                continue
+            
+            # Determine property from room number (you may need to adjust this logic)
+            # Default to Tooting if no room number specified
+            property_name = "Tooting"  # Default
+            if room_number:
+                # Add logic here to map room numbers to properties if needed
+                # For now, use the room number if it matches a property name
+                if room_number in LOCK_IDS:
+                    property_name = room_number
+            
             lock_id = LOCK_IDS.get(property_name)
             if not lock_id:
-                print(f"Property {property_name} not configured!")
+                print(f"Row {i}: Property '{property_name}' not configured in LOCK_IDS!")
                 continue
-
-            code = row.get("ReservationCode")
-            name = row.get("GuestName")
-            check_in = parse_date(row.get("CheckIn") or "")
-            check_out = parse_date(row.get("CheckOut") or "")
-            # Add hours if needed
-            check_in = check_in.replace(hour=15, minute=0, second=0)
-            check_out = check_out.replace(hour=11, minute=0, second=0)
+            
+            # Generate a code from guest name or use a default
+            # You may want to use a different field or generate codes differently
+            code = guest_name.replace(" ", "")[:6].upper()  # First 6 chars of name, no spaces
+            if not code:
+                print(f"Row {i}: Skipping - cannot generate code from empty name")
+                continue
+            
+            # Set check-in/check-out times if not already set
+            if check_in.hour == 0 and check_in.minute == 0:
+                check_in = check_in.replace(hour=15, minute=0, second=0)
+            if check_out.hour == 0 and check_out.minute == 0:
+                check_out = check_out.replace(hour=11, minute=0, second=0)
+            
+            print(f"Row {i}: Processing booking for {guest_name} (code: {code})")
             create_lock_code_simple(
-                lock_id, code, name, check_in, check_out, code_type="Front Door", booking_id=code
+                lock_id, code, guest_name, check_in, check_out, 
+                code_type="Front Door", booking_id=code
             )
             time.sleep(1)
 
