@@ -4,7 +4,6 @@ on:
     # Run every 15 minutes
     - cron: '*/15 * * * *'
   workflow_dispatch:
-
 jobs:
   run-ttlock-automation:
     runs-on: ubuntu-latest
@@ -39,11 +38,11 @@ jobs:
       
       - name: Run TTLock automation script
         run: |
-          echo "Running multi_property_all_in_one.py"
-          if [ -f "multi_property_all_in_one.py" ]; then
-            python multi_property_all_in_one.py
+          echo "Running SeCo.py"
+          if [ -f "SeCo.py" ]; then
+            python SeCo.py
           else
-            echo "Error: multi_property_all_in_one.py not found in repository root"
+            echo "Error: SeCo.py not found in repository root"
             exit 1
           fi
       
